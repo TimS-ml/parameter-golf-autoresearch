@@ -84,8 +84,9 @@ This disables the mix_order_reduction feature entirely, so:
 
 ```bash
 TORCHINDUCTOR_MIX_ORDER_REDUCTION=0    # Required: fixes the OOM
-TORCHINDUCTOR_MULTI_KERNEL=1           # Optional: adds non-persistent fallbacks for any remaining persistent reductions
 ```
+
+Note: `TORCHINDUCTOR_MULTI_KERNEL=1` would theoretically add non-persistent fallbacks for remaining persistent reductions, but it crashes on torch 2.10 due to a Triton `cache_key` bug (`'NoneType' object does not support the context manager protocol`). Do not use it.
 
 ## Other 4090-Specific Notes
 
@@ -104,10 +105,27 @@ The script assumes `WORLD_SIZE` divides 8, using `grad_accum_steps = 8 // world_
 
 ### Speed Comparison
 
-| Setup | Step Time | 20k Steps | torch.compile |
-|-------|-----------|-----------|---------------|
-| 8×H100 (baseline) | ~37ms | 10 min | inductor, fullgraph |
-| 1×4090 eager (no compile) | ~5060ms | ~28h | disabled |
-| **1×4090 compiled (MOR=0)** | **~3100ms** | **~17h** | **inductor, MOR=0** |
+Benchmarked on RTX 4090 Laptop (16GB), torch 2.10.0+cu130, 2000 iterations, seed 1337:
 
-Compiling with `MIX_ORDER_REDUCTION=0` is ~1.6× faster than eager mode on 4090.
+| Configuration | Step Time | 2k Steps | val_bpb @2k | Notes |
+|---------------|-----------|----------|-------------|-------|
+| **compiled, MOR=0** | **3112ms** | **1h 44m** | **1.2962** | Recommended |
+| eager (no compile) | 4975ms | 2h 46m | — | 1.6× slower |
+| compiled, MOR=0 + MK=1 | — | — | — | Crashes (triton bug) |
+
+For full 20k iterations: compiled ~17h, eager ~28h.
+
+`torch.compile` with `MIX_ORDER_REDUCTION=0` gives a **1.60× speedup** over eager mode. The compilation overhead is amortized within the first ~50 steps via warmup.
+
+### Default Environment Variables for 4090
+
+```bash
+# Required
+TORCHINDUCTOR_MIX_ORDER_REDUCTION=0
+
+# Recommended defaults for local iteration
+ITERATIONS=2000          # ~1h44m instead of ~17h
+MAX_WALLCLOCK_SECONDS=0  # disable 10-min cap (meant for 8×H100)
+VAL_LOSS_EVERY=2000      # validate only at end
+TRAIN_LOG_EVERY=200      # reduce log noise
+```
