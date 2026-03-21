@@ -88,6 +88,67 @@ TORCHINDUCTOR_MIX_ORDER_REDUCTION=0    # Required: fixes the OOM
 
 Note: `TORCHINDUCTOR_MULTI_KERNEL=1` would theoretically add non-persistent fallbacks for remaining persistent reductions, but it crashes on torch 2.10 due to a Triton `cache_key` bug (`'NoneType' object does not support the context manager protocol`). Do not use it.
 
+## Deep Dive: Inductor Persistent Reduction Internals
+
+This section documents the full investigation into why the OOM happens and what alternatives were tested, for anyone encountering similar issues on consumer GPUs.
+
+### What Persistent Reduction Actually Does
+
+Triton reduction kernels have two strategies:
+
+- **Persistent**: loads the entire reduction dimension into shared memory, completes the reduction in one pass within a single kernel launch. Fast (no global memory round-trip), but SMEM usage scales with `reduction_dim × dtype_size × num_live_buffers`.
+- **Non-persistent (multi-pass)**: processes the reduction in chunks, writing partial results to global memory between passes. Lower SMEM usage, but more memory traffic.
+
+The inductor chooses persistent when `reduction_numel <= threshold` (default 1024 for inner reductions, 64 otherwise). This heuristic checks the **logical tile size** but not the **actual SMEM usage**, which also depends on how many tensors are live in the fused kernel.
+
+### Why Manual RMSNorm Replacement Made It Worse
+
+We tried replacing `F.rms_norm(x, ...)` with the equivalent manual ops:
+
+```python
+x * torch.rsqrt(x.float().pow(2).mean(-1, keepdim=True) + eps).to(x.dtype)
+```
+
+This **increased** the fused kernel size from 112 KB to 141 KB, because the decomposed ops gave inductor more individual nodes to fuse into a single persistent reduction kernel. The fused kernel name changed from `triton_per_fused__fused_rms_norm_...` (112 KB) to `triton_per_fused__to_copy__unsafe_view_add_div_expand_mul_pow_select_sum_unsqueeze_view_17` (141 KB).
+
+Lesson: fighting the compiler's fusion decisions by decomposing ops often backfires.
+
+### The mix_order_reduction Override Chain
+
+The full chain that leads to the crash:
+
+1. Inductor's scheduler identifies two reductions across different dimensions that share input tensors
+2. `MixOrderReduction.can_fuse()` returns True, creating a `FusedMixOrderReductions` node
+3. `_generate_kernel_code_for_mix_order_reduction()` creates the kernel with **hardcoded** `override_persistent_reduction=True`
+4. The kernel constructor (`SIMDKernel.__init__`) sees the override and skips `should_use_persistent_reduction()` entirely
+5. `_persistent_reduction_configs()` generates configs constrained by `XBLOCK * RBLOCK <= 4096` but **not** by actual SMEM
+6. All generated configs exceed the 4090's 99 KB SMEM limit
+7. `_make_launchers()` catches `OutOfResources` per-config but all fail → `RuntimeError: No valid triton configs`
+
+### What Inductor Gets Wrong (Design Gap)
+
+GEMM template kernels have `_prune_exceeding_max_shared_mem_configs()` which queries `shared_memory_per_block_optin` and filters configs before compilation. Reduction kernels have **no equivalent SMEM-aware pruning**. The `MAX_PERSISTENT_BLOCK_NUMEL = 4096` cap limits logical tile size but doesn't account for:
+
+- dtype size of each live buffer
+- Number of simultaneously live tensors in the fused kernel
+- `num_stages` pipeline depth
+- Register spill to SMEM
+
+This is the root cause: the config generation doesn't know about hardware SMEM limits for reduction kernels.
+
+### All Approaches Tested
+
+| Approach | Result | Why |
+|----------|--------|-----|
+| `PERSISTENT_REDUCTIONS=0` | No effect | Bypassed by `mix_order_reduction`'s hardcoded override |
+| `MULTI_KERNEL=1` | Crash | Triton `cache_key` bug in torch 2.10 (`_hash_lock` is None) |
+| `MULTI_KERNEL=1` (even if it worked) | Would not help for MOR kernels | `optional_persistent` check skips fallback when `override_persistent_reduction=True` |
+| Replace `F.rms_norm` with manual ops | Worse (141 KB > 112 KB) | More decomposed ops → larger fused kernel |
+| `MAX_FUSION_SIZE=16` | No effect | Fusion size limit doesn't apply to MOR fusion path |
+| `COMPILE_THREADS=0` (sync compile) | No effect | Ruled out subprocess env propagation as cause |
+| **`MIX_ORDER_REDUCTION=0`** | **Works** | **Disables the entire MOR codepath; normal heuristics respect SMEM** |
+| Eager mode (`TORCHDYNAMO_DISABLE=1`) | Works but 1.6× slower | No compilation at all |
+
 ## Other 4090-Specific Notes
 
 ### NCCL Symbol Errors
