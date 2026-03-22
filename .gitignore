@@ -1,13 +1,9 @@
 data/tokenizers
-__pycache__/
-.DS_Store
 modded-nanogpt/
 modded-nanogpt
 data/datasets
 data/manifest.json
 data/docs_selected.jsonl
-.mypy_cache/
-.venv
 logs/
 
 *.pt
@@ -15,7 +11,7 @@ logs/
 
 x-transformers
 analysis.py
-results.tsv
+results*.tsv
 run.log
 progress.png
 memory.png
@@ -39,6 +35,10 @@ CHANGELOGS
 
 memory/
 temp/
+
+bench_train.py
+run_benchmark.sh
+*.log
 storage*/
 
 *.log
@@ -176,8 +176,6 @@ celerybeat.pid
 env/
 venv/
 ENV/
-env.bak/
-venv.bak/
 
 # Spyder project settings
 .spyderproject
