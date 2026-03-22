@@ -5,6 +5,7 @@ data/datasets
 data/manifest.json
 data/docs_selected.jsonl
 logs/
+models/
 
 *.pt
 *.ptz
