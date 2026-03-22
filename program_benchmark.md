@@ -85,40 +85,52 @@ from adam_atan2_pytorch import MuonAdamAtan2; print('adam_atan2_pytorch OK')
 
 ## Running a Submission
 
+Run each submission **foreground**, one at a time, so you can monitor the log,
+detect crashes, and react. Do NOT use batch scripts or background processes
+(see AGENTS.md).
+
 For each submission in `records/track_10min_16mb/<submission>/`:
 
-```bash
-# Copy the submission's train_gpt.py to a temp location
-cp records/track_10min_16mb/<submission>/train_gpt.py ./bench_train.py
+1. Copy the script:
+   ```bash
+   cp records/track_10min_16mb/<submission>/train_gpt.py ./bench_train.py
+   ```
+   Note: `smeargate_orthoinit_muonwd` uses `train_gpt_v5.py` instead.
 
-# Run 20 min with frequent validation for multi-checkpoint extraction
-# (See AGENTS.md for machine-specific env vars: CUDA_VISIBLE_DEVICES, LD_LIBRARY_PATH, etc.)
-TORCHINDUCTOR_MIX_ORDER_REDUCTION=0 \
-MAX_WALLCLOCK_SECONDS=1200 \
-VAL_LOSS_EVERY=50 \
-python bench_train.py > bench.log 2>&1
+2. Run foreground (see AGENTS.md for full env var setup):
+   ```bash
+   TORCHINDUCTOR_MIX_ORDER_REDUCTION=0 \
+   MAX_WALLCLOCK_SECONDS=1200 \
+   VAL_LOSS_EVERY=50 \
+   python bench_train.py > bench.log 2>&1
+   ```
 
-# Extract all val_bpb readings with timestamps
-# Format: step:100/20000 val_loss:2.5687 val_bpb:1.5174 train_time:310200ms step_avg:3102.00ms
-grep "step:.*val_bpb:" bench.log
+3. Extract results:
+   ```bash
+   # All val_bpb checkpoints with timestamps
+   grep "step:.*val_bpb:" bench.log
 
-# Find readings closest to 5/10/15/20 min marks
-# (train_time in ms: 300000=5min, 600000=10min, 900000=15min, 1200000=20min)
-# Manually find the line with train_time closest to each target
+   # Peak memory
+   grep "peak memory allocated:" bench.log
 
-# Peak memory (in MiB)
-grep "peak memory allocated:" bench.log
+   # Final post-quant metric
+   grep "final_int8_zlib_roundtrip " bench.log
+   ```
 
-# Final post-quant metric
-grep "final_int8_zlib_roundtrip " bench.log
-```
+4. If the grep is empty → crashed. Read the traceback:
+   ```bash
+   tail -50 bench.log
+   ```
+   For benchmark, only fix **platform adaptation bugs** (Triton SMEM, missing deps,
+   single-GPU compat). Do not fix model design bugs — just log as `crash`.
+
+5. Record results in `results_benchmark.tsv`, then move to the next submission.
 
 **Important notes:**
 - Some submissions use `zstandard` — install with `pip install zstandard` if needed
-- Some submissions may not have `MAX_WALLCLOCK_SECONDS` — check how wallclock is controlled (some use `ITERATIONS` instead; set both)
+- Some submissions may not have `MAX_WALLCLOCK_SECONDS` — check how wallclock is controlled
 - DDP code should gracefully handle single-GPU (WORLD_SIZE=1)
 - If a submission OOMs on 24 GB, reduce batch size via env vars (e.g. `TRAIN_BATCH_TOKENS=262144`)
-- Override `VAL_LOSS_EVERY=50` to ensure enough checkpoints for multi-point extraction
 
 ## Expected Differences from Competition
 

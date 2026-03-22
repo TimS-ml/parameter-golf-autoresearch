@@ -142,18 +142,52 @@ Techniques from competition records, ordered by BPB impact:
 | Sequence length | 2048 | 1024 | 2x default |
 | Batch tokens | 786K | 524K | 1.5x for seq=2048 |
 
-## Porting Workflow
+## Execution Model
 
-For each technique:
+Unlike `program_benchmark.md` (which uses a background batch script for known-good code),
+porting requires the agent to **run training foreground and react to crashes**.
+We are writing new code that may break. The agent must detect failures and fix them.
 
-1. **Read** the source submission's `train_gpt.py` and `README.md`
-2. **Understand** the implementation — identify the minimal code change
-3. **Port** into our `train_gpt.py` (or `train_xt.py` if applicable)
-4. **Test** on 1x 4090 with 20-min wallclock
-5. **Log** results to `results_golf.tsv`
-6. **Keep or discard** based on val_bpb improvement
+The experiment runs on a dedicated branch (e.g. `golf/mar22`).
 
-### results_golf.tsv Format
+## The Experiment Loop
+
+LOOP FOREVER:
+
+1. Look at the git state: the current branch/commit we're on
+2. Read the source submission's `train_gpt.py` and `README.md` for the next technique
+3. Port the change into our `train_gpt.py` (minimal, clean implementation)
+4. git commit
+5. Run the experiment **foreground** (see AGENTS.md for full env var setup):
+   ```bash
+   TORCHINDUCTOR_MIX_ORDER_REDUCTION=0 \
+   MAX_WALLCLOCK_SECONDS=1200 \
+   VAL_LOSS_EVERY=50 \
+   python train_gpt.py > run.log 2>&1
+   ```
+6. Read results:
+   ```bash
+   grep "step:.*val_bpb:" run.log | tail -3
+   grep "final_int8_zlib_roundtrip " run.log
+   grep "peak memory allocated:" run.log
+   ```
+7. If the grep is empty → crashed. Read the traceback:
+   ```bash
+   tail -50 run.log
+   ```
+   - If it's a trivial bug (import error, typo, shape mismatch): fix and re-run
+   - If the idea is fundamentally broken: log as `crash`, `git reset --hard HEAD~1`, move on
+8. Record results in `results_golf.tsv` (do not commit — leave untracked)
+9. If val_bpb improved (lower): keep the commit, advance the branch
+10. If equal or worse: `git reset --hard HEAD~1`, move on to next technique
+
+**Timeout**: Each run should complete within ~22 min (1200s + overhead). If it exceeds 2x, kill it and treat as crash.
+
+**Crashes**: Fix trivial bugs (missing import, wrong shape). Skip architectural failures.
+
+**NEVER STOP**: The loop runs until the human interrupts you. Do not pause to ask.
+
+## results_golf.tsv Format
 
 ```
 commit	val_bpb	memory_gb	status	description
@@ -161,8 +195,8 @@ commit	val_bpb	memory_gb	status	description
 
 Same format as `results_xt.tsv`. Do not commit this file.
 
-See also `program_benchmark.md` for running competition submissions unmodified
-(benchmarking), vs this file which is about porting techniques into our code.
+See `program_benchmark.md` for running competition submissions *unmodified*
+(benchmarking), vs this file which ports techniques into our own code.
 
 ## Porting Priority
 
