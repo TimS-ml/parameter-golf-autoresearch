@@ -119,7 +119,7 @@ Incremental contribution of each technique (all seed 1337):
 
 ## Credits
 
-- **LeakyReLU² activation**: PR #493 by @jxnl, PR #518
+- **LeakyReLU² activation**: [PR #493](https://github.com/openai/parameter-golf/pull/493) by @parinzee, [PR #518](https://github.com/openai/parameter-golf/pull/518) by @sofiabod
 - **Optimizer (Parameter Banking + Parallel Muon)**: [PR #399](https://github.com/openai/parameter-golf/pull/399) by @abaybektursun
-- **TTT recipe**: [PR #461](https://github.com/openai/parameter-golf/pull/461) by @anantdgoel
+- **TTT recipe**: [PR #461](https://github.com/openai/parameter-golf/pull/461) by @Christopher-Lee-McClendon (adapted: freeze=0 instead of original freeze=2)
 - **Base model**: [PR #414](https://github.com/openai/parameter-golf/pull/414) by @signalrush
