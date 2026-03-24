@@ -226,25 +226,30 @@ Use `—` for missing checkpoints (e.g. if a run crashes before 30 min).
 
 Priority order (by competition val_bpb, best first):
 
-| # | Submission | Competition BPB | Key Techniques |
-|---|-----------|----------------|----------------|
-| 1 | `NaiveBaseline` | 1.2244 | Reference baseline — run first |
-| 2 | `LongContextSeq2048` | 1.2058 | seq=2048, lower LR |
-| 3 | `TrainingOptSeq4096` | 1.2014 | seq=4096, Muon tuning |
-| 4 | `SlidingWindowEval` | 1.1925 | Sliding window eval only |
-| 5 | `SlidingWindow_FP16Emb_10L_MuonWD_OvertoneInit` | 1.1748 | 10L, overtone init |
-| 6 | `MixedQuant_Int6Int8_SlidingWindow` | 1.1630 | MLP 3x, mixed quant |
-| 7 | `Seq2048_FP16Emb_TunedLR` | 1.1598 | 10L, QAT int6, seq=2048 |
-| 8 | `smeargate_orthoinit_muonwd` | 1.1556 | SmearGate, BigramHash |
-| 9 | `MLP3x_QAT_Int6_SlidingWindow` | 1.1502 | 11L, int6 QAT, zstd-22 |
-| 10 | `Int6_MLP3x_SmearGate_BigramHash_MuonWD_SWA` | 1.1458 | 7 stacked techniques |
-| 11 | `10L_Int5MLP_MuonWD04_SWA50` | 1.1428 | Best: int5/int6, 10L, SWA |
+| # | Submission | Competition BPB | Key Techniques | Status |
+|---|-----------|----------------|----------------|--------|
+| 1 | `NaiveBaseline` | 1.2244 | Reference baseline | done |
+| 2 | `LongContextSeq2048` | 1.2058 | seq=2048, lower LR | done |
+| 3 | `TrainingOptSeq4096` | 1.2014 | seq=4096, Muon tuning | done |
+| 4 | `SlidingWindowEval` | 1.1925 | Sliding window eval only | done |
+| 5 | `SlidingWindow_FP16Emb_10L_MuonWD_OvertoneInit` | 1.1748 | 10L, overtone init | done |
+| 6 | `MixedQuant_Int6Int8_SlidingWindow` | 1.1630 | MLP 3x, mixed quant | done |
+| 7 | `Seq2048_FP16Emb_TunedLR` | 1.1598 | 10L, QAT int6, seq=2048 | done |
+| 8 | `smeargate_orthoinit_muonwd` | 1.1556 | SmearGate, BigramHash | done |
+| 9 | `MLP3x_QAT_Int6_SlidingWindow` | 1.1502 | 11L, int6 QAT, zstd-22 | done |
+| 10 | `Int6_MLP3x_SmearGate_BigramHash_MuonWD_SWA` | 1.1458 | 7 stacked techniques | done |
+| 11 | `10L_Int5MLP_MuonWD04_SWA50` | 1.1428 | int5/int6, 10L, SWA | done |
+| 12 | `11L_EfficientPartialXSA_FA3_SWA120` | 1.1307 | 11L, efficient partial XSA, FA3, SWA/120 | **TODO** |
+| 13 | `11L_XSA4_EMA_Int6_MLP3x_WD04_1.1271` | 1.1271 | 11L XSA4+EMA+int6 MLP3x, WD=0.04 | **TODO** |
+| 14 | `11L_XSA4_EMA_PartialRoPE_LateQAT_1.1248` | 1.1248 | Partial RoPE, LN scale, EMA, XSA4, late QAT | **TODO** |
+| 15 | `11L_EMA_GPTQ-lite_warmdown3500_QAT015_1.1233` | 1.1233 | Best: EMA, GPTQ-lite, warmdown3500, QAT@0.15 | **TODO** |
 
 Skip these (less interesting or incomplete):
 - `LowerLR` — pure LR sweep, subsumed by others
 - `FP16Embed_WD3600` — subsumed by later submissions
 - `10L_MixedPrecision` — subsumed by later submissions
 - `WarmdownQuantization` — interesting idea but subsumed
+- `LoRA_TTT` — experimental test-time training, not competitive
 - `int6_STE QAT_ MLP_bigram _U_Net` — incomplete (no train_gpt.py)
 
 ## Lessons from 20-min Pilot Runs
